@@ -71,8 +71,7 @@ public abstract class Classifier {
 
 
   /** An instance of the driver class to run model inference with Tensorflow Lite. */
-  // TODO: Declare a TFLite interpreter
-
+  protected Interpreter tflite;
 
   /** Options for configuring the Interpreter. */
   private final Interpreter.Options tfliteOptions = new Interpreter.Options();
@@ -98,8 +97,7 @@ public abstract class Classifier {
    * @return A classifier with the desired configuration.
    */
   public static Classifier create(Activity activity, Device device, int numThreads)
-      throws IOException {
-
+          throws IOException {
     return new ClassifierFloatMobileNet(activity, device, numThreads);
   }
 
@@ -186,8 +184,8 @@ public abstract class Classifier {
     }
     tfliteOptions.setNumThreads(numThreads);
 
-    // TODO: Create a TFLite interpreter instance
-
+    // Instantiate a tflite interpreter
+    tflite = new Interpreter(tfliteModel, tfliteOptions);
 
     // Loads labels out from the label file.
     labels = FileUtil.loadLabels(activity, getLabelPath());
@@ -230,15 +228,20 @@ public abstract class Classifier {
     // Runs the inference call.
     Trace.beginSection("runInference");
     long startTimeForReference = SystemClock.uptimeMillis();
-    // TODO: Run TFLite inference
+
+    // Run TFLite inference with the interpreter. Feed preprocessed image to TFLite interpreter
+    tflite.run(inputImageBuffer.getBuffer(), outputProbabilityBuffer.getBuffer().rewind());
 
     long endTimeForReference = SystemClock.uptimeMillis();
     Trace.endSection();
     LOGGER.v("Timecost to run model inference: " + (endTimeForReference - startTimeForReference));
 
     // Gets the map of label and probability.
-    // TODO: Use TensorLabel from TFLite Support Library to associate the probabilities
-    //       with category labels
+    // Use TensorLabel from TFLite Support Library to associate the probabilities
+    //       with category labels --> get the map of labels and probabilities from model
+    Map<String, Float> labeledProbability =
+            new TensorLabel(labels, probabilityProcessor.process(outputProbabilityBuffer))
+                    .getMapWithFloatValue();
 
     Trace.endSection();
 
@@ -249,8 +252,8 @@ public abstract class Classifier {
   /** Closes the interpreter and model to release resources. */
   public void close() {
     if (tflite != null) {
-      // TODO: Close the interpreter
-
+      tflite.close();
+      tflite = null;
     }
     // TODO: Close the GPU delegate
 
@@ -275,15 +278,17 @@ public abstract class Classifier {
 
     // Creates processor for the TensorImage.
     int cropSize = Math.min(bitmap.getWidth(), bitmap.getHeight());
+    // Set the number for the image rotation
     int numRoration = sensorOrientation / 90;
-    // TODO: Define an ImageProcessor from TFLite Support Library to do preprocessing
+    //Define an ImageProcessor from TFLite Support Library to do preprocessing
+    //Preprocessing involves setting the image to the size the application is expecting and getting the RGB colors
     ImageProcessor imageProcessor =
             new ImageProcessor.Builder()
-
-
-
-
-                .build();
+                    .add(new ResizeWithCropOrPadOp(cropSize, cropSize))
+                    .add(new ResizeOP(imageSizeX, imageSizeY, ResizeMethod.NEAREST_NEIGHBOR))
+                    .add(new Rot90Op(numRotation))
+                    .add(getPreprocessNormalizeOp())
+                    .build();
     return imageProcessor.process(inputImageBuffer);
   }
 
