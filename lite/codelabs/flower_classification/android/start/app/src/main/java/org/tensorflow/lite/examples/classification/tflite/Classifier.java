@@ -67,8 +67,7 @@ public abstract class Classifier {
   private final int imageSizeY;
 
   /** Optional GPU delegate for acceleration. */
-  // TODO: Declare a GPU delegate
-
+  private GpuDelegate gpuDelegate = null;
 
   /** An instance of the driver class to run model inference with Tensorflow Lite. */
   protected Interpreter tflite;
@@ -176,8 +175,8 @@ public abstract class Classifier {
     tfliteModel = FileUtil.loadMappedFile(activity, getModelPath());
     switch (device) {
       case GPU:
-        // TODO: Create a GPU delegate instance and add it to the interpreter options
-
+        gpuDelegate = new GpuDelegate();
+        tfliteOptions.addDelegate(gpuDelegate);
         break;
       case CPU:
         break;
@@ -190,13 +189,17 @@ public abstract class Classifier {
     // Loads labels out from the label file.
     labels = FileUtil.loadLabels(activity, getLabelPath());
 
+    //FIXME: I NEED TO RESIZE:: Cannot copy to a TensorFlowLite tensor (input) with 388800 bytes from a Java Buffer with 1555200 bytes.
+
     // Reads type and shape of input and output tensors, respectively.
     int imageTensorIndex = 0;
     int[] imageShape = tflite.getInputTensor(imageTensorIndex).shape(); // {1, height, width, 3}
+
     imageSizeY = imageShape[1];
     imageSizeX = imageShape[2];
     DataType imageDataType = tflite.getInputTensor(imageTensorIndex).dataType();
     int probabilityTensorIndex = 0;
+
     int[] probabilityShape =
         tflite.getOutputTensor(probabilityTensorIndex).shape(); // {1, NUM_CLASSES}
     DataType probabilityDataType = tflite.getOutputTensor(probabilityTensorIndex).dataType();
@@ -255,8 +258,11 @@ public abstract class Classifier {
       tflite.close();
       tflite = null;
     }
-    // TODO: Close the GPU delegate
-
+    // Close the GPU delegate
+    if (gpuDelegate != null) {
+      gpuDelegate.close();
+      gpuDelegate = null;
+    }
 
     tfliteModel = null;
   }
@@ -285,8 +291,8 @@ public abstract class Classifier {
     ImageProcessor imageProcessor =
             new ImageProcessor.Builder()
                     .add(new ResizeWithCropOrPadOp(cropSize, cropSize))
-                    .add(new ResizeOP(imageSizeX, imageSizeY, ResizeMethod.NEAREST_NEIGHBOR))
-                    .add(new Rot90Op(numRotation))
+                    .add(new ResizeOp(imageSizeX, imageSizeY, ResizeMethod.NEAREST_NEIGHBOR))
+                    .add(new Rot90Op(numRoration))
                     .add(getPreprocessNormalizeOp())
                     .build();
     return imageProcessor.process(inputImageBuffer);
